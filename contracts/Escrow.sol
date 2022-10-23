@@ -16,6 +16,7 @@ contract Escrow {
         uint256 status; //0 for requested; 1 for pending; 2 for completed or deleted;
         bool employee_breakup;
         bool employer_breakup;
+        uint256 ID;
         //uint256 offerTime; //timelock
     }
     mapping(uint256 => Contract) _contracts;
@@ -38,13 +39,15 @@ contract Escrow {
     function extendOffer(address payable employer, address payable employee, uint256 salary, uint256 employer_lock, uint256 employee_lock) public payable{
         require(msg.value == salary + employer_lock, "wrong amount of money");
         uint256 current = _contractIDs.current();
-        _contracts[current] = Contract(employer, employee, salary, employer_lock, employee_lock, 0, false, false);
+        _contracts[current] = Contract(employer, employee, salary, employer_lock, employee_lock, 0, false, false, current);
         _employers[employer].push(current);
         _employees[employee].push(current);
+        _contractIDs.increment();
         emit Requested(current);
     }
 
-    function rescindOffer(uint256 contractID) public payable{
+    function rescindOffer(uint256 contractID) public payable{ //optional
+        require(_contractIDs.current() > contractID);
         Contract memory thisContract = _contracts[contractID];
         require(thisContract.employer_lock != 0, "Invalid Contract");
         require(msg.sender == thisContract.employer, "not your project");
@@ -58,7 +61,8 @@ contract Escrow {
         emit Canceled();
     }
 
-    function acceptOffer(uint256 contractID) public payable{
+    function acceptOffer(uint256 contractID) public payable{ //
+        require(_contractIDs.current() > contractID);
         Contract memory thisContract = _contracts[contractID];
         require(thisContract.employer_lock != 0, "Invalid Contract");
         require(msg.value == thisContract.employee_lock, "wrong amount of money");
@@ -68,6 +72,7 @@ contract Escrow {
         emit StateChange(1);
     }
     function breakOffer(uint256 contractID) public payable{
+        require(_contractIDs.current() > contractID);
         Contract memory thisContract = _contracts[contractID];
         require(thisContract.employer_lock != 0, "Invalid Contract");
         require(msg.sender == thisContract.employee, "not your project");
@@ -86,6 +91,7 @@ contract Escrow {
     // }
 
     function approve(uint256 contractID) public payable{
+        require(_contractIDs.current() > contractID);
         Contract memory thisContract = _contracts[contractID];
         require(thisContract.employer_lock != 0, "Invalid Contract");
         require(msg.sender == thisContract.employer, "not your project");
@@ -103,6 +109,7 @@ contract Escrow {
     //     emit Approval(false);
     // }
     function BreakUp(uint256 contractID, bool employee) public{
+        require(_contractIDs.current() > contractID);
         Contract memory thisContract = _contracts[contractID];
         require(thisContract.employer_lock != 0, "Invalid Contract");
         if (employee){
@@ -124,6 +131,7 @@ contract Escrow {
     }
 
     function contractDetails(uint256 contractID) public view returns(Contract memory){
+        require(_contractIDs.current() > contractID);
         Contract memory thisContract = _contracts[contractID];
         require(thisContract.employer_lock != 0, "Invalid Contract");
         require(msg.sender == thisContract.employer || msg.sender == thisContract.employee, "not your project");
@@ -131,14 +139,23 @@ contract Escrow {
     }
 
     function currentContract(bool employer) public view returns(Contract[] memory){
-        uint256[] memory contract_indices = _employees[msg.sender];
+        
         if (employer){
-            contract_indices = _employers[msg.sender];
+            uint256[] memory contract_indices = _employers[msg.sender];
+            Contract[] memory contracts = new Contract[](contract_indices.length);
+            for (uint256 i = 0; i < contract_indices.length; i++){
+                contracts[i] = _contracts[contract_indices[i]];
+            }
+            return contracts;
         }
-        Contract[] memory contracts = new Contract[](contract_indices.length);
-        for (uint256 i = 0; i < contract_indices.length; i++){
-            contracts[i] = _contracts[contract_indices[i]];
+        else{
+            uint256[] memory contract_indices = _employees[msg.sender];
+            Contract[] memory contracts = new Contract[](contract_indices.length);
+            for (uint256 i = 0; i < contract_indices.length; i++){
+                contracts[i] = _contracts[contract_indices[i]];
+            }
+            return contracts;
         }
-        return contracts;
+       
     }
 }
